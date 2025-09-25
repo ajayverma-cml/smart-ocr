@@ -1,50 +1,44 @@
-import cv2
-import pytesseract
+import streamlit as st
+import numpy as np
+from PIL import Image
+from helper import OCRProcessor, summarize_ocr_result
 
 
-class OCRProcessor:
-    """
-    OCRProcessor handles image preprocessing and text extraction
-    using Tesseract OCR. It automatically adjusts text polarity.
-    """
-    def __init__(self, image_path):
-        self.image_path = image_path
-        self.image = cv2.imread(image_path)  # Original image
-        self.processed_image = None  # Will hold preprocessed binary image
-
-    def preprocess_image(self):
-        """
-        Convert image to grayscale, threshold it using Otsu method,
-        and invert if necessary so text is dark on light background.
-        """
-        gray = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
-
-        # Binarize image using Otsu's thresholding
-        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-        # Invert if text is white on black to match Tesseract preference
-        if cv2.countNonZero(thresh) < (thresh.size // 2):
-            thresh = 255 - thresh
-
-        self.processed_image = thresh
-        cv2.imwrite("preprocessed.png", self.processed_image)  # Save for debug/inspection
-
-    def extract_text(self):
-        """
-        Extract text from the preprocessed image using Tesseract.
-        Raises an error if preprocessing is not done.
-        """
-        if self.processed_image is None:
-            raise ValueError("Image not preprocessed. Call preprocess_image() first.")
-
-        # Use Tesseract to get detailed OCR output (word-level data)
-        text = pytesseract.image_to_string(self.processed_image)
-        return text
+st.set_page_config(page_title="Smart OCR", layout="centered")
+st.title("Smart OCR - Extract Text from Images")
 
 
-# Example usage
-ocr = OCRProcessor("test.png")
-ocr.preprocess_image()
-extracted_text = ocr.extract_text()
-print("Extracted Text:")
-print(extracted_text.strip())
+def perform_ocr(image_np):
+    """Run OCR using Tesseract on preprocessed image."""
+    ocr = OCRProcessor(image_np)
+    ocr.preprocess_image()
+    text = ocr.extract_text()
+    return text
+
+# File uploader
+uploaded_file = st.file_uploader(
+    "Upload an image or drag-and-drop here",
+    type=["png", "jpg", "jpeg"]
+)
+
+# Process uploaded image
+if uploaded_file is not None:
+    image = Image.open(uploaded_file).convert("RGB")
+    image_np = np.array(image)
+
+    # Show selected image
+    st.subheader("Selected Image:")
+    st.image(image_np, width='stretch')
+
+    # Run OCR with loader
+    with st.spinner("Processing image, please wait..."):
+        text = perform_ocr(image_np)
+        summary_data = summarize_ocr_result(text)
+        st.subheader("OCR Result:")
+        if summary_data:
+            st.write(f"**Image Text**: {summary_data['refined_ocr_result']}")
+            st.write(f"**Summary**: {summary_data['summary']}")
+            st.write(f"**Language**: {summary_data['language']}")
+            st.write(f"**Tone**: {summary_data['tone']}")
+        else:
+            st.text_area("", text, height=200)
